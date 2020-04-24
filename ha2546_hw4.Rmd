@@ -1,0 +1,121 @@
+---
+title: "tree-based methods"
+author: "Hana Akbarnejad"
+date: "4/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(viridis)
+library(ggplot2)
+library(readr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(partykit)
+library(randomForest)
+library(ranger)
+library(gbm)
+library(plotmo)
+library(pdp)
+library(lime)
+library(lasso2) #for data
+
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+
+```{r}
+data(Prostate)
+prostate_data = Prostate
+```
+
+(a) Fit a regression tree with lpsa as the response and the other variables as predictors.
+Use cross-validation to determine the optimal tree size. Which tree size corresponds
+to the lowest cross-validation error? Is this the same as the tree size obtained using
+the 1 SE rule?
+```{r}
+set.seed(2020)
+
+# fitting initial tree
+tree1 = rpart(formula = lpsa~., data = prostate_data)
+rpart.plot(tree1)
+
+# using CV to find optimal tree size
+cp_table = printcp(tree1) # smallest error of 0.60554 corresponds to cp of  0.021470 which is tree size 7
+plotcp(tree1)
+
+#prune tree with obtained cp:
+min_error = which.min(cp_table[,4])   # shows that minimum error belongs to tree size 7
+# minimum cross-validation error
+tree2 = prune(tree1, cp = cp_table[min_error,1])
+rpart.plot(tree2)
+
+# 1SE rule...
+tree3 = prune(tree1, cp = cp_table[cp_table[,4]<cp_table[min_error,4]+cp_table[min_error,5],1][1])
+rpart.plot(tree3) # 1SE rule shows tree size of 4 which is different from cp method
+```
+
+It can be observed that he tree obtained with the minimum CV error has different size compared to the tree that is obtained from the 1 SE rule. According to the minimum CV error, the optimal tree size is 7, while the size fo the tree obtained from 1 SE rule is 4.
+
+(b) Create a plot of the final tree you choose.
+
+Looking at the Cp plot created above, it can be observed that the file point below horizental line belongs to the cp of 0.045 and tree size 4 which is the same as what we got from 1 SE rule. So, I prune the tree using this cp value and choose it as my final tree. Chosing higher complexity results in a smaller and more interpretible tree.
+```{r}
+set.seed(2020)
+tree4 =  rpart(formula = lpsa~., data = prostate_data,
+               control = rpart.control(cp = 0.045))
+rpart.plot(tree4)
+```
+
+Pick one of the terminal nodes, and interpret the information displayed......................
+
+(c) Perform bagging and report the variable importance.
+```{r}
+set.seed(2020)
+bagging = randomForest(lpsa ~ ., data = prostate_data, mtry = 8)
+bagging2 = ranger(lpsa ~ ., data = prostate_data, mtry = 8,
+             splitrule = "variance",
+             importance = "permutation",
+             scale.permutation.importance = TRUE)
+importance(bagging2)
+
+barplot(sort(ranger::importance(bagging2), decreasing = FALSE),
+        las = 2, horiz = TRUE, cex.names = 0.7,
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(8))
+```
+
+Explain finding........
+
+(d) Perform random forests and report the variable importance.
+```{r}
+set.seed(2020)
+rf = randomForest(lpsa ~ ., data = prostate_data, mtry = 2)
+rf2 = ranger(lpsa ~ ., data = prostate_data, mtry = 2,
+             splitrule = "variance",
+             importance = "permutation",
+             scale.permutation.importance = TRUE)
+importance(rf2)
+barplot(sort(ranger::importance(rf2), decreasing = FALSE),
+        las = 2, horiz = TRUE, cex.names = 0.7,
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(8))
+```
+
+Explain Findings............
