@@ -23,6 +23,7 @@ library(plotmo)
 library(pdp)
 library(lime)
 library(lasso2) #for data
+library(ISLR)
 
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -179,3 +180,113 @@ summary(resamp) # bagging with Mean RMSE of 0.7227003 is has the lowest error
 ```
 
 Bagging?
+
+## Problem 2
+```{r}
+data(OJ)
+oj_data = OJ
+oj_data = oj_data %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    purchase = as.factor(purchase)
+  )
+
+train_data = oj_data[1:800,]
+test_data = oj_data[801:1070,]
+
+ctrl2 = trainControl(method = "repeatedcv",
+                    summaryFunction = twoClassSummary,
+                    classProbs = TRUE)
+```
+
+(a) Fit a classification tree to the training set, with Purchase as the response and the
+other variables as predictors. Use cross-validation to determine the tree size and
+create a plot of the final tree. Predict the response on the test data. What is the test
+classification error rate?
+
+```{r}
+set.seed(2020)
+
+class_tree1 = rpart(formula = purchase~.,
+                    data = train_data,
+                    control = rpart.control(cp = 0))
+
+rpart.plot(class_tree1)
+
+# min CV error
+class_cp_table = printcp(class_tree1)
+plotcp(class_tree1)
+class_min_err = which.min(class_cp_table[,4])
+
+# pruning
+class_tree2 = prune(class_tree1, cp = class_cp_table[class_min_err,1])
+rpart.plot(class_tree2) #10 end nodes
+
+
+# ctrl = trainControl(method = "repeatedcv",
+# summaryFunction = twoClassSummary,
+# classProbs = TRUE)
+# set.seed(1)
+# rpart.fit <- train(diabetes~., dat,
+# subset = rowTrain,
+# method = "rpart",
+# tuneGrid = data.frame(cp = exp(seq(-6,-3, len = 20))),
+# trControl = ctrl,
+# metric = "ROC")
+# ggplot(rpart.fit, highlight = TRUE)
+# rpart.plot(rpart.fit$finalModel)
+
+# prediction on test data
+rpart_pred = predict(class_tree2, newdata = test_data)[,1]
+ModelMetrics::rmse(rpart_pred, test_data$purchase) # test error is  1.133502 (???)
+```
+
+Explain findings...........
+
+(b) Perform random forests on the training set and report variable importance. What is
+the test error rate?
+
+```{r}
+class_rf = ranger(purchase~., test_data,
+                  mtry = 5,
+                  min.node.size = 5,
+                  splitrule = "gini",
+                  importance = "permutation",
+                  scale.permutation.importance = TRUE)
+
+barplot(sort(ranger::importance(class_rf), decreasing = FALSE),
+                  las = 2, horiz = TRUE, cex.names = 0.7,
+                  col = colorRampPalette(colors = c("darkred", "white", "darkblue"))(17))
+
+class_rf_pred = predict(class_rf, data = test_data, type = "response")$predictions
+ModelMetrics::rmse(class_rf_pred, test_data$purchase) # mse is 0.2357023
+```
+
+Explain findings......
+
+(c) Perform boosting on the training set and report variable importance. What is the
+test error rate?
+```{r}
+
+class_gbm_grid = expand.grid(n.trees = 3000,
+                        interaction.depth = 1:6,
+                        shrinkage = 0.001,
+                        n.minobsinnode = 1)
+set.seed(2020)
+# Binomial loss function
+class_gbm_fit = train(purchase~.,
+                  data = train_data,
+                  tuneGrid = class_gbm_grid,
+                  trControl = ctrl2,
+                  method = "gbm",
+                  distribution = "bernoulli",
+                  metric = "ROC",
+                  verbose = FALSE)
+
+summary(class_gbm_fit$finalModel, las = 2, cBars = 8, cex.names = 0.6)
+
+class_gbm_pred = predict(class_gbm_fit, newdata = test_data, type = "prob")[,1]
+ModelMetrics::rmse(class_gbm_pred, test_data$purchase) #1.099664
+```
+
+Explain findings .................
