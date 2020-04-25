@@ -45,6 +45,7 @@ theme_set(theme_minimal() + theme(legend.position = "bottom"))
 ```{r}
 data(Prostate)
 prostate_data = Prostate
+ctrl = trainControl(method = "cv")
 ```
 
 (a) Fit a regression tree with lpsa as the response and the other variables as predictors.
@@ -119,3 +120,62 @@ barplot(sort(ranger::importance(rf2), decreasing = FALSE),
 ```
 
 Explain Findings............
+
+(e) Perform boosting and report the variable importance.
+```{r}
+
+set.seed(2020)
+boosting = gbm(lpsa ~ ., prostate_data,
+          distribution = "gaussian",
+          n.trees = 5000,
+          interaction.depth = 3,
+          shrinkage = 0.005,
+          cv.folds = 10)
+
+nt = gbm.perf(boosting, method = "cv") # optimal number of trees
+
+# Grid search and find optimal tuning parameter
+boosting_grid = expand.grid(n.trees = c(2000,3000),
+                      interaction.depth = 2:10,
+                      shrinkage = c(0.001,0.003,0.005),
+                      n.minobsinnode = 1)
+
+set.seed(2020)
+boosting_fit = train(lpsa ~ ., prostate_data,
+                method = "gbm",
+                tuneGrid = boosting_grid,
+                trControl = ctrl,
+                verbose = FALSE)
+
+# summary of gbm from caret gives the variable importance for boosting
+summary(boosting_fit$finalModel, las = 2, cBars = 8, cex.names = 0.6)
+```
+
+(f) Which of the above models will you select to predict PSA level? Explain.
+```{r}
+
+# RF using caret
+rf_grid = expand.grid(mtry = 1:2,
+                      splitrule = "variance",
+                      min.node.size = 1:2)
+set.seed(2020)
+rf_fit = train(lpsa ~ ., prostate_data,
+                method = "ranger",
+                tuneGrid = rf_grid,
+                trControl = ctrl)
+
+# bagging using caret
+bagging_grid = expand.grid(mtry = 1:8,
+                      splitrule = "variance",
+                      min.node.size = 1:8)
+set.seed(2020)
+bagging_fit = train(lpsa ~ ., prostate_data,
+                method = "ranger",
+                tuneGrid = bagging_grid,
+                trControl = ctrl)
+
+resamp = resamples(list(RF = rf_fit, boosting = boosting_fit, bagging = bagging_fit))
+summary(resamp) # bagging with Mean RMSE of 0.7227003 is has the lowest error
+```
+
+Bagging?
