@@ -1,0 +1,158 @@
+---
+title: "problem 2"
+author: "Hana Akbarnejad"
+date: "4/26/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(viridis)
+library(ggplot2)
+library(readr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(partykit)
+library(randomForest)
+library(ranger)
+library(gbm)
+library(plotmo)
+library(pdp)
+library(lime)
+library(lasso2) #for data
+library(ISLR)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+```
+
+```{r include=FALSE}
+data(OJ)
+oj_data = OJ
+oj_data = oj_data %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    purchase = as.factor(purchase)
+  )
+
+train_rows = createDataPartition(y = oj_data$purchase,
+                                 p = 0.746729,
+                                 list = FALSE)
+train_data = oj_data[train_rows,]
+test_data = oj_data[-train_rows,]
+
+ctrl2 = trainControl(method = "repeatedcv",
+                    summaryFunction = twoClassSummary,
+                    classProbs = TRUE)
+```
+
+### a
+Fit a classification tree to the training set, with Purchase as the response and the other variables as predictors. Use cross-validation to determine the tree size and create a plot of the final tree. Predict the response on the test data. What is the test classification error rate?
+
+```{r}
+set.seed(2020)
+
+rpart.fit = train(purchase~., train_data,
+                method = "rpart",
+                tuneGrid = data.frame(cp = exp(seq(-30,-3, len = 500))),
+                trControl = ctrl2,
+                metric = "ROC")
+
+ggplot(rpart.fit, highlight = TRUE)
+
+rpart.plot(rpart.fit$finalModel)
+
+tune_value = rpart.fit$finalModel$tuneValue
+
+
+# prediction on test data
+rpart_pred = predict(rpart.fit, newdata = test_data, type = "raw")
+class_error = mean(rpart_pred != test_data$purchase)
+```
+
+We can observe the final tree with 17 terminal nodes and the complexity (cp) of `r round(tune_value, 4)`.
+The test classification error rate is `r round(class_error*100, 2)`%.
+
+### b
+Perform random forests on the training set and report variable importance. What is the test error rate?
+```{r}
+set.seed(2020)
+
+rf.grid = expand.grid(mtry = 1:10,
+                      splitrule = "gini",
+                      min.node.size = 1)
+
+rf.fit = train(purchase~., train_data,
+              method = "ranger",
+              tuneGrid = rf.grid,
+              metric = "ROC",
+              importance = "impurity",
+              trControl = ctrl2)
+
+ggplot(rf.fit, highlight = TRUE)
+
+barplot(sort(ranger::importance(rf.fit$finalModel), decreasing = FALSE),
+                  las = 2, horiz = TRUE, cex.names = 0.7,
+                  col = colorRampPalette(colors = c("darkred", "white", "darkblue"))(17))
+
+rf.pred = predict(rf.fit, newdata = test_data, type = "raw")
+rf_test_error = mean(rf.pred != test_data$purchase)
+```
+
+The plot above shows variable importance based on applying Random Forests ensambel method on the train data. We can see that the 5 most important variables are *loyal_ch*, *weekof_purchase*, *price_diff*, *store_id*, and *sale_price_mm*.
+
+The test error rate is `r round(rf_test_error*100, 2)`%.
+
+### c
+Perform boosting on the training set and report variable importance. What is the test error rate?
+```{r}
+
+class_gbm_grid = expand.grid(n.trees = 5000,
+                        interaction.depth = 1:6,
+                        shrinkage = c(0.001,0.003,0.005),
+                        n.minobsinnode = 1)
+set.seed(2020)
+# Binomial loss function
+class_gbm_fit = train(purchase~.,
+                  data = train_data,
+                  tuneGrid = class_gbm_grid,
+                  trControl = ctrl2,
+                  method = "gbm",
+                  distribution = "bernoulli",
+                  metric = "ROC",
+                  verbose = FALSE)
+
+
+ggplot(class_gbm_fit, highlight = TRUE)
+
+class_gbm_fit$finalModel$tuneValue
+
+# variable importance
+summary(class_gbm_fit$finalModel, las = 2, cBars = 8, cex.names = 0.6)
+
+# prediction and test error
+class_gbm_pred = predict(class_gbm_fit, newdata = test_data, type = "raw")
+gbm_test_error = mean(class_gbm_pred != test_data$purchase)
+```
+
+The plot above shows variable importance based on applying Boosting ensambel method on the train data. We can see that the 3 most important variables are *loyal_ch*, *price_diff*, and *sale_price_mm*.
+
+The test error rate is `r round(gbm_test_error*100, 2)`%.
+

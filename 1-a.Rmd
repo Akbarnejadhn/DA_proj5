@@ -2,11 +2,10 @@
 title: "Tree-based Methods"
 author: "Hana Akbarnejad"
 date: "4/26/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-
 library(tidyverse)
 library(viridis)
 library(ggplot2)
@@ -41,19 +40,21 @@ options(
 scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
 theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
 ```
 
-```{r}
+```{r include=FALSE}
 data(Prostate)
 prostate_data = Prostate
 ctrl = trainControl(method = "cv")
 ```
 
-(a) Fit a regression tree with lpsa as the response and the other variables as predictors.
-Use cross-validation to determine the optimal tree size. Which tree size corresponds
-to the lowest cross-validation error? Is this the same as the tree size obtained using
-the 1 SE rule?
+## Problem 1
+
+### a
+Fit a regression tree with lpsa as the response and the other variables as predictors. Use cross-validation to determine the optimal tree size. Which tree size corresponds to the lowest cross-validation error? Is this the same as the tree size obtained using the 1 SE rule?
 ```{r}
+
 set.seed(2020)
 
 # fitting initial tree
@@ -77,9 +78,11 @@ rpart.plot(tree3) # 1SE rule shows tree size of 4 which is different from cp met
 
 It can be observed that he tree obtained with the minimum CV error has different size compared to the tree that is obtained from the 1 SE rule. According to the minimum CV error, the optimal tree size is 7, while the size fo the tree obtained from 1 SE rule is 4.
 
-(b) Create a plot of the final tree you choose. Pick one of the terminal nodes, and interpret the information displayed.
+### b
+Create a plot of the final tree you choose. Pick one of the terminal nodes, and interpret the information displayed.
 
 Looking at the Cp plot created above, it can be observed that the file point below horizental line belongs to the cp of 0.045 and tree size 4 which is the same as what we got from 1 SE rule. So, I prune the tree using this cp value and choose it as my final tree. Chosing higher complexity results in a smaller and more interpretible tree.
+
 ```{r}
 set.seed(2020)
 tree4 =  rpart(formula = lpsa~., data = prostate_data,   # refit it in caret
@@ -89,7 +92,8 @@ rpart.plot(tree4)
 
 We can observe that there are four terminal nodes which have 9%, 39%, 30%, and 22% of observations, from left to right. The other number in terminal nodes contain the average response level of the observations that fall within tat node. For example, the righter most node contains 22% of observations with mean IPSA level of 3.8. The splitting steps of trees were based on lcavol and lweight values cut-offs.
 
-(c) Perform bagging and report the variable importance.
+### c
+Perform bagging and report the variable importance.
 ```{r}
 set.seed(2020)
 bagging = randomForest(lpsa ~ ., data = prostate_data, mtry = 8)
@@ -107,7 +111,9 @@ barplot(sort(ranger::importance(bagging2), decreasing = FALSE),
 
 After performing Bagging method, the variable importance value can be observed above for each variable. Also, the above barplot shows that top three variables are *lcavol*, *lweight*, and *svi*.
 
-(d) Perform random forests and report the variable importance.
+### d
+Perform random forests and report the variable importance.
+
 ```{r}
 set.seed(2020)
 rf = randomForest(lpsa ~ ., data = prostate_data, mtry = 2)
@@ -124,9 +130,9 @@ barplot(sort(ranger::importance(rf2), decreasing = FALSE),
 
 After performing Random Forests method, the variable importance value can be observed above for each variable. Also, the above barplot shows that top three variables are *lcavol*, *svi*, and *lweight*; the same variables as obtained through Bagging.
 
-(e) Perform boosting and report the variable importance.
+### e
+Perform boosting and report the variable importance.
 ```{r}
-
 set.seed(2020)
 boosting = gbm(lpsa ~ ., prostate_data,
           distribution = "gaussian",
@@ -138,10 +144,10 @@ boosting = gbm(lpsa ~ ., prostate_data,
 nt = gbm.perf(boosting, method = "cv") # optimal number of trees
 
 # Grid search and find optimal tuning parameter
-boosting_grid = expand.grid(n.trees = 100:5000, #50, 8000
-                      interaction.depth = 1:10,  #1:10
-                      shrinkage = c(0.001,0.003,0.005),
-                      n.minobsinnode = 1)
+boosting_grid = expand.grid(n.trees = c(2000,3000),
+                            interaction.depth = 2:10,
+                            shrinkage = c(0.001,0.003,0.005),
+                            n.minobsinnode = 1)
 
 set.seed(2020)
 boosting_fit = train(lpsa ~ ., prostate_data,
@@ -158,13 +164,15 @@ boosting_fit$finalModel$tuneValue
 
 After performing Boosting method, the variable importance value can be observed above for each variable. Also, the above barplot shows that top three variables are *lcavol*, *lweight*, and *svi*; the same variables as obtained through Bagging and Random Forests.
 
-(f) Which of the above models will you select to predict PSA level? Explain.
+### f
+Which of the above models will you select to predict PSA level? Explain.
+
 ```{r}
 
 # RF using caret
-rf_grid = expand.grid(mtry = 1:8,
+rf_grid = expand.grid(mtry = 1:7,
                       splitrule = "variance",
-                      min.node.size = 1:75)
+                      min.node.size = 1:15)
 set.seed(2020)
 rf_fit = train(lpsa ~ ., prostate_data,
                 method = "ranger",
@@ -172,9 +180,9 @@ rf_fit = train(lpsa ~ ., prostate_data,
                 trControl = ctrl)
 
 # bagging using caret
-bagging_grid = expand.grid(mtry = 1:8, 
+bagging_grid = expand.grid(mtry = 8, 
                       splitrule = "variance",
-                      min.node.size = 1:75)
+                      min.node.size = 1:15)
 set.seed(2020)
 bagging_fit = train(lpsa ~ ., prostate_data,
                 method = "ranger",
@@ -185,124 +193,4 @@ resamp = resamples(list(RF = rf_fit, boosting = boosting_fit, bagging = bagging_
 summary(resamp) # boosting with Mean RMSE of 0.7341767 is has the lowest error
 ```
 
-After comparing the three ensamble methods in caret and comapring them using resmples method, we can see that these methods have very close Mean RMSE, but boosting with the value 0.7341767 shows the smallest training error. So, when predicting PSA level, boosting is the best ensamble method we can choose.
-
-## Problem 2
-```{r}
-data(OJ)
-oj_data = OJ
-oj_data = oj_data %>% 
-  janitor::clean_names() %>% 
-  mutate(
-    purchase = as.factor(purchase)
-  )
-
-train_rows = createDataPartition(y = oj_data$purchase,
-                                 p = 0.746729,
-                                 list = FALSE)
-train_data = oj_data[train_rows,]
-test_data = oj_data[-train_rows,]
-
-ctrl2 = trainControl(method = "repeatedcv",
-                    summaryFunction = twoClassSummary,
-                    classProbs = TRUE)
-```
-
-(a) Fit a classification tree to the training set, with Purchase as the response and the
-other variables as predictors. Use cross-validation to determine the tree size and
-create a plot of the final tree. Predict the response on the test data. What is the test
-classification error rate?
-
-```{r}
-
-set.seed(2020)
-
-rpart.fit = train(purchase~., train_data,
-                method = "rpart",
-                tuneGrid = data.frame(cp = exp(seq(-40,-3, len = 1000))),
-                trControl = ctrl2,
-                metric = "ROC")
-
-ggplot(rpart.fit, highlight = TRUE)
-
-rpart.plot(rpart.fit$finalModel)
-
-tune_value = rpart.fit$finalModel$tuneValue
-
-
-# prediction on test data
-rpart_pred = predict(rpart.fit, newdata = test_data, type = "raw")
-class_error = mean(rpart_pred != test_data$purchase)
-```
-
-We can observe the final tree with 19 terminal nodes and the complexity (cp) of `r tune_value`.
-The test classification error rate is `r round(class_error*100, 2)`%.
-
-(b) Perform random forests on the training set and report variable importance. What is
-the test error rate?
-
-```{r}
-
-set.seed(2020)
-
-rf.grid = expand.grid(mtry = 1:10,
-                      splitrule = "gini",
-                      min.node.size = 1)
-
-rf.fit = train(purchase~., train_data,
-              method = "ranger",
-              tuneGrid = rf.grid,
-              metric = "ROC",
-              importance = "impurity",
-              trControl = ctrl2)
-
-ggplot(rf.fit, highlight = TRUE)
-
-barplot(sort(ranger::importance(rf.fit$finalModel), decreasing = FALSE),
-                  las = 2, horiz = TRUE, cex.names = 0.7,
-                  col = colorRampPalette(colors = c("darkred", "white", "darkblue"))(17))
-
-rf.pred = predict(rf.fit, newdata = test_data, type = "raw")
-rf_test_error = mean(rf.pred != test_data$purchase)
-```
-
-The plot above shows variable importance based on applying Random Forests ensambel method on the train data. We can see that the 5 most important variables are *loyal_ch*, *weekof_purchase*, *price_diff*, *store_id*, and *sale_price_mm*.
-
-The test error rate is `r round(rf_test_error*100, 2)`%.
-
-(c) Perform boosting on the training set and report variable importance. What is the
-test error rate?
-```{r}
-
-class_gbm_grid = expand.grid(n.trees = 5000,
-                        interaction.depth = 1:10,
-                        shrinkage = c(0.001,0.003,0.005),
-                        n.minobsinnode = 1)
-set.seed(2020)
-# Binomial loss function
-class_gbm_fit = train(purchase~.,
-                  data = train_data,
-                  tuneGrid = class_gbm_grid,
-                  trControl = ctrl2,
-                  method = "gbm",
-                  distribution = "bernoulli",
-                  metric = "ROC",
-                  verbose = FALSE)
-
-
-ggplot(class_gbm_fit, highlight = TRUE)
-
-class_gbm_fit$finalModel$tuneValue
-
-# variable importance
-summary(class_gbm_fit$finalModel, las = 2, cBars = 8, cex.names = 0.6)
-
-# prediction and test error
-class_gbm_pred = predict(class_gbm_fit, newdata = test_data, type = "raw")
-gbm_test_error = mean(class_gbm_pred != test_data$purchase)
-```
-
-The plot above shows variable importance based on applying Boosting ensambel method on the train data. We can see that the 3 most important variables are *loyal_ch*, *price_diff*, and *sale_price_mm*.
-
-The test error rate is `r round(gbm_test_error*100, 2)`%.
-
+After comparing the three ensamble methods in caret and comapring them using resmples method, we can see that these methods have very close Mean RMSE, but RF and boosting show the smallest training error (0.74). So, when predicting PSA level, these are the best ensamble method we can choose.
